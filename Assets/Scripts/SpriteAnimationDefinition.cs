@@ -15,20 +15,20 @@ public class SpriteAnimationDefinition : ScriptableObject
     public struct DirectionConfig
     {
         public SpriteDirection direction;
-        public float angle; // Y rotation
+        public float angle;  // Y rotation
         public float xAngle; // X rotation for camera matching
     }
 
     [Header("Directions")]
     public List<DirectionConfig> directionConfigs = new()
     {
-        new DirectionConfig { direction = SpriteDirection.N, angle = 0f, xAngle = 0f },
-        new DirectionConfig { direction = SpriteDirection.NE, angle = 45f, xAngle = 0f },
-        new DirectionConfig { direction = SpriteDirection.E, angle = 90f, xAngle = 0f },
+        new DirectionConfig { direction = SpriteDirection.N,  angle = 0f,   xAngle = 0f },
+        new DirectionConfig { direction = SpriteDirection.NE, angle = 45f,  xAngle = 0f },
+        new DirectionConfig { direction = SpriteDirection.E,  angle = 90f,  xAngle = 0f },
         new DirectionConfig { direction = SpriteDirection.SE, angle = 135f, xAngle = 0f },
-        new DirectionConfig { direction = SpriteDirection.S, angle = 180f, xAngle = 0f },
+        new DirectionConfig { direction = SpriteDirection.S,  angle = 180f, xAngle = 0f },
         new DirectionConfig { direction = SpriteDirection.SW, angle = 225f, xAngle = 0f },
-        new DirectionConfig { direction = SpriteDirection.W, angle = 270f, xAngle = 0f },
+        new DirectionConfig { direction = SpriteDirection.W,  angle = 270f, xAngle = 0f },
         new DirectionConfig { direction = SpriteDirection.NW, angle = 315f, xAngle = 0f }
     };
 
@@ -41,10 +41,15 @@ public class SpriteAnimationDefinition : ScriptableObject
     [HideInInspector] public int totalFrames;
     [HideInInspector] public float frameRate;
 
+    [Header("UV Coverage")]
+    [Tooltip("If true, this animation is used only for UV coverage (e.g. T-pose). " +
+             "Its frames will be included in the baker reference sheet but NOT exported as a normal spritesheet.")]
+    public bool uvCoverageOnly = false;
+
     public void Recalculate()
     {
         if (!clip) return;
-        frameRate = clip.frameRate;
+        frameRate   = clip.frameRate;
         totalFrames = Mathf.RoundToInt(clip.length * frameRate);
     }
 
@@ -52,24 +57,17 @@ public class SpriteAnimationDefinition : ScriptableObject
     {
         frameIndices.Clear();
         Recalculate();
-
         int step = Mathf.Max(1, importEveryNthFrame);
         for (int i = 0; i < totalFrames; i += step)
             frameIndices.Add(i);
     }
 
     public SpriteDirection[] GetEffectiveDirections()
-    {
-        return System.Array.ConvertAll(directionConfigs.ToArray(), c => c.direction);
-    }
+        => System.Array.ConvertAll(directionConfigs.ToArray(), c => c.direction);
 
     public float[] GetAngles()
-    {
-        return System.Array.ConvertAll(directionConfigs.ToArray(), c => c.angle);
-    }
+        => System.Array.ConvertAll(directionConfigs.ToArray(), c => c.angle);
 
     public float[] GetXAngles()
-    {
-        return System.Array.ConvertAll(directionConfigs.ToArray(), c => c.xAngle);
-    }
+        => System.Array.ConvertAll(directionConfigs.ToArray(), c => c.xAngle);
 }

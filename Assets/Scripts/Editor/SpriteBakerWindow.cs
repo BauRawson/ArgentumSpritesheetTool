@@ -3,30 +3,17 @@ using UnityEditor;
 using System.IO;
 using System.Collections.Generic;
 
-/// <summary>
-/// Bakes a painted idle skin sheet onto all animation frames using UV maps.
-///
-/// Artist receives IdleReference.png (64x256, 4 frames top-to-bottom: S, W, N, E).
-/// They paint over it and return the same file as PaintedSkin.png.
-/// The baker splits it back into 4 frames and builds per-direction UV lookups.
-/// </summary>
 public class SpriteBakerWindow : EditorWindow
 {
     [MenuItem("Tools/Sprite Baker")]
     public static void Open() => GetWindow<SpriteBakerWindow>("Sprite Baker");
 
-    private string uvmapPath      = "Assets/SpriteExports/Body_human_male_uvs_uvmap.png";
-    private string paintedSkinPath = "Assets/SpriteExports/PaintedSkin.png";
-    private string outputPath     = "Assets/SpriteExports/Baked.png";
+    private string tposeUVMapPath   = "Assets/SpriteExports/tpose_uvmap.png";
+    private string paintedSkinPath  = "Assets/SpriteExports/PaintedSkin.png";
+    private string manifestPath     = "Assets/SpriteExports/manifest.json";
+    private string outputPath       = "Assets/SpriteExports/Baked.png";
 
-    private int pixelSize = 64;
-
-    // Must match IdleFrameExtractorWindow
-    private int idleRowS = 8;
-    private int idleRowW = 9;
-    private int idleRowN = 10;
-    private int idleRowE = 11;
-
+    private int   pixelSize  = 64;
     private bool  useFallbackTransparent = false;
     private Color fallbackColor          = new Color(1f, 0f, 1f, 1f);
     private float uvTolerance            = 1.5f;
@@ -34,33 +21,50 @@ public class SpriteBakerWindow : EditorWindow
     private Vector2 scroll;
     private string  status = "";
 
+    void OnEnable()
+    {
+        tposeUVMapPath  = EditorPrefs.GetString("SB_tposeUV",     tposeUVMapPath);
+        paintedSkinPath = EditorPrefs.GetString("SB_paintedSkin", paintedSkinPath);
+        manifestPath    = EditorPrefs.GetString("SB_manifest",    manifestPath);
+        outputPath      = EditorPrefs.GetString("SB_output",      outputPath);
+        pixelSize       = EditorPrefs.GetInt   ("SB_pixelSize",   pixelSize);
+        uvTolerance     = EditorPrefs.GetFloat ("SB_tolerance",   uvTolerance);
+    }
+
+    void SavePrefs()
+    {
+        EditorPrefs.SetString("SB_tposeUV",     tposeUVMapPath);
+        EditorPrefs.SetString("SB_paintedSkin", paintedSkinPath);
+        EditorPrefs.SetString("SB_manifest",    manifestPath);
+        EditorPrefs.SetString("SB_output",      outputPath);
+        EditorPrefs.SetInt   ("SB_pixelSize",   pixelSize);
+        EditorPrefs.SetFloat ("SB_tolerance",   uvTolerance);
+    }
+
     void OnGUI()
     {
         scroll = EditorGUILayout.BeginScrollView(scroll);
-
         EditorGUILayout.LabelField("Sprite Baker", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "1. Export with 'Export UV Maps' ON to get *_uvmap.png\n" +
-            "2. Run 'Extract Idle Frames' to get IdleReference.png\n" +
-            "3. Artist paints over IdleReference.png, saves as PaintedSkin.png\n" +
-            "   (same 64x256 sheet, same S/W/N/E order)\n" +
-            "4. Set paths and click Bake",
+            "Bakes a painted T-pose skin onto all animations, outputting a single combined spritesheet.\n\n" +
+            "1. Export with UV Maps ON and a T-pose animation (uvCoverageOnly can be off so you get tpose.png as reference).\n" +
+            "2. Artist paints PaintedSkin.png using tpose.png as reference (same dimensions).\n" +
+            "3. Point manifest path at your export's manifest.json.\n" +
+            "4. Click Bake.",
             MessageType.Info);
 
         GUILayout.Space(8);
+        EditorGUI.BeginChangeCheck();
+
         EditorGUILayout.LabelField("Paths", EditorStyles.boldLabel);
-        uvmapPath       = EditorGUILayout.TextField("UV Map Sheet",      uvmapPath);
-        paintedSkinPath = EditorGUILayout.TextField("Painted Skin Sheet", paintedSkinPath);
-        outputPath      = EditorGUILayout.TextField("Output Path",        outputPath);
+        tposeUVMapPath  = EditorGUILayout.TextField("T-Pose UV Map",       tposeUVMapPath);
+        paintedSkinPath = EditorGUILayout.TextField("Painted Skin (.png)", paintedSkinPath);
+        manifestPath    = EditorGUILayout.TextField("Manifest (.json)",    manifestPath);
+        outputPath      = EditorGUILayout.TextField("Output Path (.png)",  outputPath);
 
         GUILayout.Space(8);
-        EditorGUILayout.LabelField("Layout (must match your export)", EditorStyles.boldLabel);
-        pixelSize = EditorGUILayout.IntField("Frame Pixel Size", pixelSize);
-        EditorGUILayout.LabelField("Idle Row Indices (0 = top of sheet)", EditorStyles.miniLabel);
-        idleRowS = EditorGUILayout.IntField("South Row", idleRowS);
-        idleRowW = EditorGUILayout.IntField("West Row",  idleRowW);
-        idleRowN = EditorGUILayout.IntField("North Row", idleRowN);
-        idleRowE = EditorGUILayout.IntField("East Row",  idleRowE);
+        EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
+        pixelSize   = EditorGUILayout.IntField("Frame Pixel Size", pixelSize);
 
         GUILayout.Space(8);
         EditorGUILayout.LabelField("Options", EditorStyles.boldLabel);
@@ -68,6 +72,8 @@ public class SpriteBakerWindow : EditorWindow
         useFallbackTransparent = EditorGUILayout.Toggle("Unmapped = Transparent", useFallbackTransparent);
         if (!useFallbackTransparent)
             fallbackColor = EditorGUILayout.ColorField("Fallback Color", fallbackColor);
+
+        if (EditorGUI.EndChangeCheck()) SavePrefs();
 
         GUILayout.Space(12);
         if (GUILayout.Button("Bake", GUILayout.Height(36)))
@@ -78,7 +84,6 @@ public class SpriteBakerWindow : EditorWindow
             GUILayout.Space(6);
             EditorGUILayout.HelpBox(status, status.StartsWith("ERROR") ? MessageType.Error : MessageType.Info);
         }
-
         EditorGUILayout.EndScrollView();
     }
 
@@ -87,112 +92,145 @@ public class SpriteBakerWindow : EditorWindow
         status = "Working...";
         Repaint();
 
-        // --- Load UV map sheet ---
-        Texture2D uvSheet = LoadPNG(uvmapPath);
-        if (uvSheet == null) { status = "ERROR: Could not load UV map: " + uvmapPath; return; }
+        // --- Load T-pose UV map ---
+        Texture2D tposeUV = LoadPNG(tposeUVMapPath);
+        if (tposeUV == null) { status = "ERROR: Could not load T-pose UV map: " + tposeUVMapPath; return; }
 
-        int totalRows = uvSheet.height / pixelSize;
-        int totalCols = uvSheet.width  / pixelSize;
+        int tposeRows = tposeUV.height / pixelSize;
+        int tposeCols = tposeUV.width  / pixelSize;
+        float tol = uvTolerance / pixelSize;
 
-        // --- Load painted skin sheet and split into 4 direction frames ---
-        Texture2D paintedSheet = LoadPNG(paintedSkinPath);
-        if (paintedSheet == null) { status = "ERROR: Could not load painted skin: " + paintedSkinPath; return; }
-
-        if (paintedSheet.width != pixelSize || paintedSheet.height != pixelSize * 4)
+        // --- Load painted skin (must match tpose dimensions) ---
+        Texture2D paintedSkin = LoadPNG(paintedSkinPath);
+        if (paintedSkin == null) { status = "ERROR: Could not load painted skin: " + paintedSkinPath; return; }
+        if (paintedSkin.width != tposeUV.width || paintedSkin.height != tposeUV.height)
         {
-            status = $"ERROR: Painted skin is {paintedSheet.width}x{paintedSheet.height}, " +
-                     $"expected {pixelSize}x{pixelSize * 4} (4 stacked frames).";
+            status = "ERROR: Painted skin is " + paintedSkin.width + "x" + paintedSkin.height +
+                     " but T-pose UV map is " + tposeUV.width + "x" + tposeUV.height +
+                     ". They must be the same size.";
             return;
         }
 
-        // Split painted sheet into 4 frames (top-to-bottom: S, W, N, E)
-        // In bottom-up texture: frame i is at Y = (4-1-i)*pixelSize
-        int[]       idleRows   = new[] { idleRowS, idleRowW, idleRowN, idleRowE };
-        string[]    dirNames   = new[] { "S", "W", "N", "E" };
-        Texture2D[] dirFrames  = new Texture2D[4];
-
-        for (int i = 0; i < 4; i++)
+        // --- Build UV->Color lookup from all T-pose rows ---
+        var lookup = new UVColorLookup();
+        for (int row = 0; row < tposeRows; row++)
         {
-            int y = (4 - 1 - i) * pixelSize;
-            Color[] px = paintedSheet.GetPixels(0, y, pixelSize, pixelSize);
-            dirFrames[i] = new Texture2D(pixelSize, pixelSize, TextureFormat.RGBA32, false);
-            dirFrames[i].SetPixels(px);
-            dirFrames[i].Apply();
+            Texture2D paintedFrame = ExtractFrame(paintedSkin, 0, row, tposeRows);
+            if (paintedFrame == null) continue;
+            Color[] paintedPx = paintedFrame.GetPixels();
+
+            for (int col = 0; col < tposeCols; col++)
+            {
+                Texture2D uvFrame = ExtractFrame(tposeUV, col, row, tposeRows);
+                if (uvFrame == null) continue;
+                Color[] uvPx = uvFrame.GetPixels();
+                for (int i = 0; i < uvPx.Length; i++)
+                {
+                    if (uvPx[i].a < 0.5f) continue;
+                    lookup.Add(uvPx[i].r, uvPx[i].g, paintedPx[i]);
+                }
+                DestroyImmediate(uvFrame);
+            }
+            DestroyImmediate(paintedFrame);
+        }
+        DestroyImmediate(tposeUV);
+        DestroyImmediate(paintedSkin);
+
+        Debug.Log("[SpriteBaker] Lookup: " + lookup.Count + " entries from " + tposeRows + " T-pose directions.");
+        if (lookup.Count == 0) { status = "ERROR: UV lookup is empty. Check tpose_uvmap.png and pixelSize."; return; }
+
+        // --- Load manifest ---
+        if (!File.Exists(manifestPath)) { status = "ERROR: Manifest not found: " + manifestPath; return; }
+        SpriteExportManifest manifest = JsonUtility.FromJson<SpriteExportManifest>(File.ReadAllText(manifestPath));
+        if (manifest == null || manifest.animations == null || manifest.animations.Count == 0)
+        {
+            status = "ERROR: Manifest is empty or invalid.";
+            return;
         }
 
-        // --- Build per-direction UV->Color lookups ---
-        float tol = uvTolerance / pixelSize;
-        var lookups = new UVColorLookup[4];
+        string exportFolder = Path.GetDirectoryName(manifestPath);
 
-        for (int i = 0; i < 4; i++)
+        // --- Calculate combined sheet dimensions ---
+        // Each animation entry: framesPerDirection cols, directions.Count * rowsPerDirection rows
+        // We need the max frame count across all anims for sheet width,
+        // and sum of all direction rows for sheet height.
+        int maxCols   = 0;
+        int totalRows = 0;
+
+        // Store layout per animation: (entry, startRow, uvSheet)
+        var layouts = new List<(AnimationEntry entry, int startRow, Texture2D uvSheet)>();
+
+        foreach (var entry in manifest.animations)
         {
-            int idleRow = idleRows[i];
-            Texture2D uvFrame = ExtractFrame(uvSheet, col: 0, row: idleRow, totalRows: totalRows);
-            if (uvFrame == null)
+            // Skip tpose — it has no uvmap we want to bake (it IS the source)
+            if (entry.name.ToLower() == "tpose") continue;
+
+            string uvFile = Path.Combine(exportFolder, manifest.groupName + "_" + manifest.exportPrefix + "_" + entry.name + "_uvmap.png");
+            if (!File.Exists(uvFile))
             {
-                Debug.LogWarning($"[SpriteBaker] Could not extract UV frame for {dirNames[i]} (row {idleRow})");
+                Debug.LogWarning("[SpriteBaker] No UV map for animation '" + entry.name + "', skipping.");
                 continue;
             }
 
-            Color[] uvPx     = uvFrame.GetPixels();
-            Color[] paintedPx = dirFrames[i].GetPixels();
-            var lookup = new UVColorLookup();
+            Texture2D uvSheet = LoadPNG(uvFile);
+            if (uvSheet == null) continue;
 
-            for (int j = 0; j < uvPx.Length; j++)
-            {
-                if (uvPx[j].a < 0.5f) continue;
-                lookup.Add(uvPx[j].r, uvPx[j].g, paintedPx[j]);
-            }
+            int animRows = entry.directions.Count * entry.rowsPerDirection;
+            int animCols = entry.framesPerDirection;
+            if (entry.rowsPerDirection > 1)
+                animCols = manifest.maxFramesWidth > 0 ? manifest.maxFramesWidth : entry.framesPerDirection;
 
-            lookups[i] = lookup;
-            DestroyImmediate(uvFrame);
-            Debug.Log($"[SpriteBaker] Lookup {dirNames[i]} (row {idleRow}): {lookup.Count} entries.");
+            maxCols = Mathf.Max(maxCols, animCols);
+            layouts.Add((entry, totalRows, uvSheet));
+            totalRows += animRows;
         }
 
-        // --- Bake the full sheet ---
-        Texture2D outSheet = new Texture2D(uvSheet.width, uvSheet.height, TextureFormat.RGBA32, false);
-        Color[] clearPx = new Color[uvSheet.width * uvSheet.height];
-        outSheet.SetPixels(clearPx);
+        if (layouts.Count == 0) { status = "ERROR: No animations to bake. Check UV map files exist alongside manifest."; return; }
 
-        int mappedPx = 0, unmappedPx = 0;
+        int sheetW = pixelSize * maxCols;
+        int sheetH = pixelSize * totalRows;
+
+        Debug.Log("[SpriteBaker] Combined sheet: " + maxCols + " cols x " + totalRows + " rows = " + sheetW + "x" + sheetH + "px");
+
+        Texture2D outSheet = new Texture2D(sheetW, sheetH, TextureFormat.RGBA32, false);
+        outSheet.SetPixels(new Color[sheetW * sheetH]); // init transparent
+
         Color fallback = useFallbackTransparent ? Color.clear : fallbackColor;
+        int mappedPx = 0, unmappedPx = 0;
 
-        for (int row = 0; row < totalRows; row++)
+        foreach (var (entry, startRow, uvSheet) in layouts)
         {
-            // Which direction is this row? row % 4 gives index into S,W,N,E
-            int dirIndex = row % 4;
-            UVColorLookup lookup = lookups[dirIndex];
-            bool isIdleRow = System.Array.IndexOf(idleRows, row) >= 0;
+            int animSheetRows = uvSheet.height / pixelSize;
+            int animSheetCols = uvSheet.width  / pixelSize;
 
-            for (int col = 0; col < totalCols; col++)
+            for (int row = 0; row < animSheetRows; row++)
             {
-                Texture2D uvFrame = ExtractFrame(uvSheet, col, row, totalRows);
-                if (uvFrame == null) continue;
-
-                Color[] outFramePx = new Color[pixelSize * pixelSize];
-
-                // Idle row col 0: paste painted skin directly
-                if (isIdleRow && col == 0)
+                for (int col = 0; col < animSheetCols; col++)
                 {
-                    outFramePx = dirFrames[dirIndex].GetPixels();
-                }
-                else if (lookup != null)
-                {
-                    Color[] uvFramePx = uvFrame.GetPixels();
-                    for (int i = 0; i < uvFramePx.Length; i++)
+                    Texture2D uvFrame = ExtractFrame(uvSheet, col, row, animSheetRows);
+                    if (uvFrame == null) continue;
+
+                    Color[] uvPx       = uvFrame.GetPixels();
+                    Color[] outFramePx = new Color[pixelSize * pixelSize];
+
+                    for (int i = 0; i < uvPx.Length; i++)
                     {
-                        if (uvFramePx[i].a < 0.5f) { outFramePx[i] = Color.clear; continue; }
-                        bool hit = lookup.Sample(uvFramePx[i].r, uvFramePx[i].g, tol, out Color found);
+                        if (uvPx[i].a < 0.5f) { outFramePx[i] = Color.clear; continue; }
+                        bool hit = lookup.Sample(uvPx[i].r, uvPx[i].g, tol, out Color found);
                         if (hit) { outFramePx[i] = found; mappedPx++; }
                         else     { outFramePx[i] = fallback; unmappedPx++; }
                     }
-                }
 
-                int destX = col * pixelSize;
-                int destY = (totalRows - 1 - row) * pixelSize;
-                outSheet.SetPixels(destX, destY, pixelSize, pixelSize, outFramePx);
-                DestroyImmediate(uvFrame);
+                    int globalRow = startRow + row;
+                    int destX = col * pixelSize;
+                    int destY = (totalRows - 1 - globalRow) * pixelSize;
+                    outSheet.SetPixels(destX, destY, pixelSize, pixelSize, outFramePx);
+                    DestroyImmediate(uvFrame);
+                }
             }
+
+            DestroyImmediate(uvSheet);
+            Debug.Log("[SpriteBaker] Baked animation: " + entry.name);
         }
 
         outSheet.Apply();
@@ -201,11 +239,19 @@ public class SpriteBakerWindow : EditorWindow
         File.WriteAllBytes(outputPath, outSheet.EncodeToPNG());
         DestroyImmediate(outSheet);
 
+        // Write a baked manifest alongside the output so the game knows the layout
+        manifest.combinedSpritesheet = Path.GetFileName(outputPath);
+        File.WriteAllText(
+            Path.Combine(Path.GetDirectoryName(outputPath), "baked_manifest.json"),
+            JsonUtility.ToJson(manifest, true)
+        );
+
         AssetDatabase.Refresh();
 
         int   total = mappedPx + unmappedPx;
         float pct   = total > 0 ? mappedPx * 100f / total : 0f;
-        status = $"Done! {pct:F1}% pixels mapped ({unmappedPx} unmapped).\nSaved to: {outputPath}";
+        status = "Done! " + pct.ToString("F1") + "% pixels mapped (" + unmappedPx + " unmapped).\n" +
+                 "Saved to: " + outputPath;
     }
 
     Texture2D ExtractFrame(Texture2D sheet, int col, int row, int totalRows)

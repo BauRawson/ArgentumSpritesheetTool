@@ -1,6 +1,6 @@
 {
     "groupName": "Body",
-    "exportPrefix": "human_male_uvs",
+    "exportPrefix": "armor_leather_human_male",
     "pixelSize": 64,
     "sortOrder": 0,
     "sheetWidth": 0,
@@ -17,7 +17,7 @@
             ],
             "framesPerDirection": 8,
             "fps": 8,
-            "spritesheet": "Body_human_male_uvs_Walk.png",
+            "spritesheet": "Body_armor_leather_human_male_Walk.png",
             "rowStart": 0,
             "rowsPerDirection": 2
         },
@@ -31,7 +31,7 @@
             ],
             "framesPerDirection": 1,
             "fps": 8,
-            "spritesheet": "Body_human_male_uvs_Idle.png",
+            "spritesheet": "Body_armor_leather_human_male_Idle.png",
             "rowStart": 0,
             "rowsPerDirection": 1
         },
@@ -45,7 +45,7 @@
             ],
             "framesPerDirection": 3,
             "fps": 8,
-            "spritesheet": "Body_human_male_uvs_Punch.png",
+            "spritesheet": "Body_armor_leather_human_male_Punch.png",
             "rowStart": 0,
             "rowsPerDirection": 1
         },
@@ -59,7 +59,7 @@
             ],
             "framesPerDirection": 3,
             "fps": 8,
-            "spritesheet": "Body_human_male_uvs_Block.png",
+            "spritesheet": "Body_armor_leather_human_male_Block.png",
             "rowStart": 0,
             "rowsPerDirection": 1
         },
@@ -75,7 +75,7 @@
             ],
             "framesPerDirection": 1,
             "fps": 8,
-            "spritesheet": "Body_human_male_uvs_tpose.png",
+            "spritesheet": "Body_armor_leather_human_male_tpose.png",
             "rowStart": 0,
             "rowsPerDirection": 1
         }
