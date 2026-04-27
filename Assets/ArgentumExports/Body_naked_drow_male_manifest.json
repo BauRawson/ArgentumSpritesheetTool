@@ -3,65 +3,23 @@
     "exportPrefix": "naked_drow_male",
     "pixelSize": 64,
     "sortOrder": 0,
-    "sheetWidth": 4,
+    "sheetWidth": 8,
     "maxFramesWidth": 4,
-    "combinedSpritesheet": "Body_naked_drow_male.png",
+    "combinedSpritesheet": "Body_naked_drow_male_square.png",
     "animations": [
         {
-            "name": "Walk",
+            "name": "square",
             "directions": [
                 "S",
-                "E",
                 "N",
+                "E",
                 "W"
             ],
             "framesPerDirection": 8,
             "fps": 8,
-            "spritesheet": "Body_naked_drow_male.png",
+            "spritesheet": "Body_naked_drow_male_square.png",
             "rowStart": 0,
             "rowsPerDirection": 2
-        },
-        {
-            "name": "Idle",
-            "directions": [
-                "S",
-                "E",
-                "N",
-                "W"
-            ],
-            "framesPerDirection": 1,
-            "fps": 8,
-            "spritesheet": "Body_naked_drow_male.png",
-            "rowStart": 8,
-            "rowsPerDirection": 1
-        },
-        {
-            "name": "Punch",
-            "directions": [
-                "S",
-                "E",
-                "N",
-                "W"
-            ],
-            "framesPerDirection": 3,
-            "fps": 8,
-            "spritesheet": "Body_naked_drow_male.png",
-            "rowStart": 12,
-            "rowsPerDirection": 1
-        },
-        {
-            "name": "Block",
-            "directions": [
-                "S",
-                "E",
-                "N",
-                "W"
-            ],
-            "framesPerDirection": 3,
-            "fps": 8,
-            "spritesheet": "Body_naked_drow_male.png",
-            "rowStart": 16,
-            "rowsPerDirection": 1
         }
     ]
 }

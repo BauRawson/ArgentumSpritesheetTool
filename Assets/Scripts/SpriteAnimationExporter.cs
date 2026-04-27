@@ -28,6 +28,20 @@ public class SpriteAnimationExporter : MonoBehaviour
     [Tooltip("Stitch all animations into a single spritesheet per variant.")]
     public bool combineAnimations = false;
 
+    [Header("Square Sheet (512×512, 8×8 grid of 64×64)")]
+    [Tooltip("When enabled, exports one square.png per variant instead of the standard layout.")]
+    public bool exportSquareSheet = false;
+    [Tooltip("Frame size in pixels. 64 → 512×512 sheet.")]
+    public int squareFrameSize = 64;
+    [Tooltip("Walk animation — 8 frames fill Row A per direction.")]
+    public SpriteAnimationDefinition squareWalk;
+    [Tooltip("Idle animation — 1 frame at col 0 of Row B per direction.")]
+    public SpriteAnimationDefinition squareIdle;
+    [Tooltip("Attack animation — 3 frames at cols 1–3 of Row B per direction.")]
+    public SpriteAnimationDefinition squareAttack;
+    [Tooltip("Block animation — 3 frames at cols 4–6 of Row B per direction.")]
+    public SpriteAnimationDefinition squareBlock;
+
     [Header("Color Limiting")]
     public bool limitColors = true;
     public Texture2D paletteTexture; // If set, uses this palette for all variants. Otherwise, uses each variant's material mainTexture.
@@ -102,7 +116,9 @@ public class SpriteAnimationExporter : MonoBehaviour
             maxFramesWidth = maxFramesWidth
         };
 
-        if (combineAnimations)
+        if (exportSquareSheet)
+            yield return ExportSquareSheetForVariant(folder, manifest, variant, paletteColors);
+        else if (combineAnimations)
             yield return ExportCombinedSheet(folder, manifest, variant, paletteColors);
         else
             foreach (var anim in batch.animations)
@@ -475,5 +491,132 @@ public class SpriteAnimationExporter : MonoBehaviour
         float dg = a.g - b.g;
         float db = a.b - b.b;
         return Mathf.Sqrt(dr * dr + dg * dg + db * db);
+    }
+
+    // ── Square Sheet ────────────────────────────────────────────────────────────
+    // Layout (visual top→bottom):
+    //   Rows 0-1: South  | Rows 2-3: North  | Rows 4-5: East  | Rows 6-7: West
+    //   Row A (even): Walk frames 0-7  (cols 0-7)
+    //   Row B (odd):  Idle×1 | Attack×3 | Block×3 | Empty×1  (cols 0-7)
+
+    IEnumerator ExportSquareSheetForVariant(
+        string folder,
+        SpriteExportManifest manifest,
+        GameObject variant,
+        List<Color> paletteColors)
+    {
+        if (squareWalk == null || squareIdle == null || squareAttack == null || squareBlock == null)
+        {
+            Debug.LogError("[Square] Assign squareWalk, squareIdle, squareAttack, and squareBlock in the Inspector.");
+            yield break;
+        }
+
+        const int GRID = 8;
+        int fs = squareFrameSize;
+        int totalPx = fs * GRID;
+
+        Texture2D sheet = new Texture2D(totalPx, totalPx, TextureFormat.RGBA32, false);
+        sheet.SetPixels(new Color[totalPx * totalPx]); // transparent
+
+        SpriteDirection[] dirs = { SpriteDirection.S, SpriteDirection.N, SpriteDirection.E, SpriteDirection.W };
+
+        for (int d = 0; d < 4; d++)
+        {
+            SpriteDirection dir = dirs[d];
+            int walkRow   = d * 2;
+            int actionRow = d * 2 + 1;
+
+            yield return RenderSquareFrames(variant, squareWalk,   dir, 8, walkRow,   0, sheet, fs, GRID, paletteColors);
+            yield return RenderSquareFrames(variant, squareIdle,   dir, 1, actionRow, 0, sheet, fs, GRID, paletteColors);
+            yield return RenderSquareFrames(variant, squareAttack, dir, 3, actionRow, 1, sheet, fs, GRID, paletteColors);
+            yield return RenderSquareFrames(variant, squareBlock,  dir, 3, actionRow, 4, sheet, fs, GRID, paletteColors);
+            // col 7 stays transparent (empty slot)
+        }
+
+        sheet.Apply();
+
+        string fileName = flattenFolders
+            ? $"{manifest.groupName}_{manifest.exportPrefix}_square.png"
+            : "square.png";
+
+        File.WriteAllBytes(Path.Combine(folder, fileName), sheet.EncodeToPNG());
+
+        manifest.combinedSpritesheet = fileName;
+        manifest.sheetWidth = GRID;
+        manifest.animations.Add(new AnimationEntry
+        {
+            name = "square",
+            fps = squareWalk.fps,
+            framesPerDirection = GRID,
+            directions = new List<string> { "S", "N", "E", "W" },
+            spritesheet = fileName,
+            rowsPerDirection = 2
+        });
+
+        Debug.Log($"[Square] Exported {fileName} ({totalPx}×{totalPx}px)");
+    }
+
+    IEnumerator RenderSquareFrames(
+        GameObject variant,
+        SpriteAnimationDefinition def,
+        SpriteDirection dir,
+        int maxFrames,
+        int visualRow,
+        int startCol,
+        Texture2D sheet,
+        int fs,
+        int gridSize,
+        List<Color> paletteColors)
+    {
+        if (def == null) yield break;
+
+        bool found = false;
+        float yAngle = 0f, xAngle = 0f;
+        foreach (var dc in def.directionConfigs)
+        {
+            if (dc.direction == dir) { yAngle = dc.angle; xAngle = dc.xAngle; found = true; break; }
+        }
+        if (!found) { Debug.LogWarning($"[Square] Direction {dir} not found in {def.name}"); yield break; }
+
+        characterRoot.rotation = Quaternion.Euler(xAngle, yAngle, 0);
+
+        List<int> frames = ResolveFrames(def);
+        int totalClipFrames = Mathf.RoundToInt(def.clip.length * def.clip.frameRate);
+        int texY = (gridSize - 1 - visualRow) * fs; // flip: visual top → texture bottom
+
+        int count = Mathf.Min(frames.Count, maxFrames);
+        for (int i = 0; i < count; i++)
+        {
+            float time = (float)frames[i] / totalClipFrames * def.clip.length;
+            def.clip.SampleAnimation(variant, time);
+
+            yield return new WaitForEndOfFrame();
+
+            Texture2D frame = CaptureAtSize(fs);
+            if (paletteColors != null && paletteColors.Count > 0)
+                QuantizeColors(frame, paletteColors);
+            if (exportYOffset != 0)
+                frame = ShiftTexture(frame, exportYOffset);
+
+            sheet.SetPixels((startCol + i) * fs, texY, fs, fs, frame.GetPixels());
+            Destroy(frame);
+        }
+    }
+
+    Texture2D CaptureAtSize(int size)
+    {
+        RenderTexture rt = new RenderTexture(size, size, 24);
+        captureCamera.targetTexture = rt;
+        captureCamera.Render();
+
+        RenderTexture.active = rt;
+        Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.ReadPixels(new Rect(0, 0, size, size), 0, 0);
+        tex.Apply();
+
+        captureCamera.targetTexture = null;
+        RenderTexture.active = null;
+        Destroy(rt);
+        return tex;
     }
 }
